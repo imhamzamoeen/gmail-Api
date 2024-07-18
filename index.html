@@ -1,0 +1,735 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Gmail API demo</title>
+    <meta charset="UTF-8">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap-theme.min.css">
+    <style>
+        iframe {
+            width: 100%;
+            border: 0;
+            min-height: 80%;
+            height: 600px;
+            display: flex;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>AMS Gmail</h1>
+
+        <a href="#compose-modal" data-toggle="modal" id="compose-button"
+            class="btn btn-primary pull-right hidden">Compose</a>
+
+        <button id="authorize-button" class="btn btn-primary hidden">Authorize</button>
+        
+                <button id="logout-button" onclick="BatchDelete();" class="btn btn-primary hidden">Signout</button>
+        <!--<button id="logout-button" onclick="signout();" class="btn btn-primary hidden">Signout</button>-->
+
+        <table class="table table-striped table-inbox hidden">
+            <thead>
+                <tr>
+                    <th>From</th>
+                    <th>Subject</th>
+                    <th>Date/Time</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div class="modal fade" id="compose-modal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    <h4 class="modal-title">Compose</h4>
+                </div>
+                <form onsubmit="return sendEmail();">
+                        <input type="hidden" id="reply-message-id" />
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <input type="email" class="form-control" id="compose-to" placeholder="To" required />
+                        </div>
+
+                        <div class="form-group">
+                            <input type="text" class="form-control" id="compose-subject" placeholder="Subject"
+                                required />
+                        </div>
+
+                        <div class="form-group">
+                            <textarea class="form-control" id="compose-message" placeholder="Message" rows="10"
+                                required></textarea>
+                        </div>
+                        <div>
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" style="width:80%">Attachment</th>
+                                        <th scope="col">Remove</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attachment">
+                                    <!-- here attachments will be added -->
+
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                            <input id="inputFile" type="file" onChange="convertToBase64();" />
+                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                        <button type="submit" id="send-button" class="btn btn-primary">Send</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+
+    <script type="text/javascript">
+        var accesstoken = 'Bearer ';
+        var clientId = '844583246874-2tc21k0o2c418auphp255h8kiippu31l.apps.googleusercontent.com';
+        var apiKey = 'AIzaSyBi10V0JNb6Z6Zez9hbwkv-mtzuabMODRg';
+        var scopes =
+            'https://www.googleapis.com/auth/gmail.readonly ' +
+            'https://mail.google.com/ '+
+            'https://www.googleapis.com/auth/gmail.modify '+
+            'https://www.googleapis.com/auth/gmail.send';
+
+        function handleClientLoad() {
+            gapi.client.setApiKey(apiKey);
+            window.setTimeout(checkAuth, 1);
+        }
+        
+    
+    
+      function signout() {
+           window.open('https://accounts.google.com/logout', '_blank').focus();
+            location.reload();
+
+
+    
+    //  if(gapi.auth.signOut()){
+    //      alert("signed out successfully")
+    //  }
+    //  else{
+    //      alert("nhe hua jo krna kr ly");
+    //  }
+
+    }
+
+        function checkAuth() {
+            gapi.auth.authorize({
+                client_id: clientId,
+                scope: scopes,
+                immediate: true,
+                cookie_policy: 'single_host_origin'
+            }, handleAuthResult);
+        }
+
+        function handleAuthClick() {
+            token = gapi.auth.authorize({
+                client_id: clientId,
+                scope: scopes,
+                immediate: false
+            }, handleAuthResult);
+
+            return false;
+        }
+
+        function handleAuthResult(authResult) {
+
+            if (!authResult.error) {
+                accesstoken += authResult.access_token; //saving accesstoken 
+            }
+            if (authResult && !authResult.error) {
+                loadGmailApi();
+                $('#authorize-button').remove();
+                $('.table-inbox').removeClass("hidden");
+                $('#compose-button').removeClass("hidden");
+                 $('#logout-button').removeClass("hidden");
+            } else {
+                $('#authorize-button').removeClass("hidden");
+                $('#authorize-button').on('click', function() {
+                    handleAuthClick();
+                });
+            }
+        }
+
+        function loadGmailApi() {
+            gapi.client.load('gmail', 'v1', displayInbox);  //when auth is completed ..it fetches 10 messages 
+        }
+
+        function displayInbox() {
+            var request = gapi.client.gmail.users.messages.list({ //this only gets how much messages with their id only
+                'userId': 'me',
+                //   'q':'from:i160148',
+                'labelIds': 'SENT',            //isko change krien tu sent s aajien gay 
+                'maxResults': 10
+            });
+            request.execute(function(response) {
+                $.each(response.messages, function() {
+                    var messageRequest = gapi.client.gmail.users.messages
+                .get({ //each message in full detials
+                        'userId': 'me',
+                        'id': this.id
+                    });
+
+
+                    messageRequest.execute(appendMessageRow);
+                });
+            });
+        }
+
+
+
+        function appendMessageRow(message) {
+            //har message get hony par yeh function chalta aur main table main entry k sath yeh modal bnata
+            
+            //this enters message main parts to a table and makes a modal that has message content and iframe
+
+            $('.table-inbox tbody').append(
+                '<tr>\
+                <td>' + getHeader(message.payload.headers, 'From') + '</td>\
+                <td>\
+                  <a href="#message-modal-' + message.id +
+                '" data-toggle="modal" id="message-link-' + message.id + '">' +
+                getHeader(message.payload.headers, 'Subject') +
+                '</a>\
+                </td>\
+                <td>' + getHeader(message.payload.headers, 'Date') + '</td>\
+              </tr>'
+            );
+            var reply_to = (getHeader(message.payload.headers, 'Reply-to') !== '' ?
+                getHeader(message.payload.headers, 'Reply-to') :
+                getHeader(message.payload.headers, 'From')).replace(/\"/g, '&quot;');           //getting relpy to things from that message
+
+            var reply_subject = 'Re: ' + getHeader(message.payload.headers, 'Subject').replace(/\"/g, '&quot;');
+            $('body').append(
+                '<div class="modal fade" id="message-modal-' + message.id +
+                '" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">\
+                <div class="modal-dialog modal-lg">\
+                  <div class="modal-content">\
+                    <div class="modal-header">\
+                      <button type="button"\
+                              class="close"\
+                              data-dismiss="modal"\
+                              aria-label="Close">\
+                        <span aria-hidden="true">&times;</span></button>\
+                      <h4 class="modal-title" id="myModalLabel">' +
+                getHeader(message.payload.headers, 'Subject') +
+                '</h4>\
+                    </div>\
+                    <div class="modal-body" id="message-iframe-' + message.id + '">\
+                    </div>\
+                    <div class="modal-footer">\
+                      <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>\
+                      <button type="button" class="btn btn-primary reply-button" data-dismiss="modal" data-toggle="modal" data-target="#compose-modal"\
+                      onclick="fillInReply(\
+                        \'' + reply_to + '\', \
+                        \'' + reply_subject + '\', \
+                        \'' + getHeader(message.payload.headers, 'Message-ID') + '\'\
+                        );"\
+                      >Reply</button>\
+                    </div>\
+                  </div>\
+                </div>\
+              </div>'
+            );
+            
+            //the following function does is k jab uska respective modal click ho tu usky iframe mai yeh rkhwa do           //aur funciton k andar function is lie likha wa k yeh function with value create  ho jata pehly e 
+            $('#message-link-' + message.id).on('click', async function() {
+                 var ifrm = $("#message-iframe-"+message.id);
+                $("#message-iframe-"+message.id).html(getBody(message.payload));
+
+                        // $('<script>alert("hi");</' + 'script>').appendTo(document.body);
+                
+                // Now getting file start here //
+                $("#message-iframe-"+message.id).append(getFileName(message.payload,message.id, ifrm)); //this will add filename at the end
+                //issue is if i call here the getfile and tu woh return pehly ho jata 
+                // getfile(message.payload, message.id, ifrm); //ab is k andar ja kr append hoga woh 
+            });
+        }
+
+        function sendEmail() {
+            $('#send-button').addClass('disabled');
+    
+                var rep_id=$('#reply-message-id').val();
+                console.log(rep_id);
+                if(rep_id!=''){
+                    console.log("han reply kr rha ");
+                    //it means it is a reply
+                      sendMessage({
+                    'To': $('#compose-to').val(),
+                    'Subject': $('#compose-subject').val(),
+                    'In-Reply-To': $('#reply-message-id').val()     //this is needed when to reply 
+                },
+                $('#compose-message').val(),
+                composeTidy
+            );
+                    
+                }else{
+                    
+                      sendMessage({
+                    'To': $('#compose-to').val(),
+                    'Subject': $('#compose-subject').val()
+                },
+                $('#compose-message').val(),
+                composeTidy
+            );
+                }
+          
+
+            return false;
+        }
+
+        function composeTidy() {
+            console.log("in clearing modal");
+            $('#compose-modal').modal('hide'); //disable the modal
+            
+            //clear all values
+             $('#reply-message-id').val('');
+            $('#compose-to').val('');
+            $('#compose-subject').val('');
+            $('#compose-message').val('');
+            $('#inputFile').val('');
+            
+            //clear all arrays as well 
+            AllFiles.length = 0;
+            AllFileNames.length = 0;
+            
+            //clear attachment table
+            $('#attachment').html('');
+            
+
+            $('#send-button').removeClass('disabled');
+        }
+         function BatchDelete(){
+            //this function takes should get list of string id in an array and it will delete them as batch 
+            console.log("in batch delete");
+            //deleting one message 
+                      var idz = ["17ccba04e6e0a6cf", "17ccb9f48461fc8a"]
+                      
+            var sendRequest = gapi.client.gmail.users.messages.batchDelete({
+              'userId': 'me',
+            'resource': {
+                        'ids': idz
+                    }
+            });
+                sendRequest.execute(function(response) {
+
+                    alert("Mail Deleted Successfully");
+                   location.reload();
+
+                });
+        }
+        
+        function SingleDelete(message_id){
+            //this function takes one id and deltes it 
+            console.log("in delete");
+            //deleting one message 
+                      var idz = ["17ccb569a6fa1e84", "17cc8b8a0beed395", "17ccad3cbfa3a248"]
+                      
+            var sendRequest = gapi.client.gmail.users.messages.delete({
+              'userId': 'me',
+              'id':message_id,
+            });
+                sendRequest.execute(function(response) {
+
+                    alert("Mail Deleted Successfully");
+                   location.reload();
+
+                });
+        }
+
+        function fillInReply(to, subject, message_id) {
+                //this function is called when reply button is pressed and it fills the properties and make them disabled to net get errors like k to aur h aur reply id aur h 
+            
+            $('#compose-to').val(to);
+            $('#compose-subject').val(subject);
+            $('#reply-message-id').val(message_id);
+            
+            $("#compose-subject").prop('disabled', true); //disable 
+            $("#compose-to").prop('disabled', true); //disable 
+        }
+
+    
+
+        var AllFiles = []; //this will contain all selected files encrypted data 
+        var AllFileNames = []; // This will contain all selected file names, types etc 
+        var file_ = ''; //Global variable that will have file data 
+        let input_file; //Global Variable as it will have object of file;
+        
+        
+        function convertToBase64() { //This function reads that file and covert to base 64
+            //Read File
+            
+            var file;
+            
+             //it means that reply has file
+             file = document.getElementById("inputFile").files[0];
+             
+           
+            
+            input_file = file;
+            console.log(file);
+            var reader = new FileReader();
+            reader.onload = function() {
+                file_ = reader.result.split('base64,')[1];
+                AllFiles.push(file_); //Pushing all selected files in the array
+            };
+            reader.onerror = function(error) {
+                console.log('Error: ', error);
+            };
+            reader.readAsDataURL(file);
+            console.log(file_);
+            //pushing one file to array
+            console.log("before pushing");
+            console.log(AllFileNames);
+            AllFileNames.push(input_file);
+            var index = AllFileNames.indexOf(input_file); //will find this element in the array and return his index 
+            var html_to_add = '<tr id="row' + index + '">' +
+                '<td>' + input_file.name + '</td>' +
+                '<td>' +
+                '<button type="button" onclick="removeattachment(' + index +
+                ');" class="btn btn-danger"><i class="far fa-trash-alt"></i></button>' +
+                '</td>' +
+                '</tr>';
+            console.log(html_to_add);
+
+            document.getElementById("attachment").innerHTML += (html_to_add);
+        }
+
+        function removeattachment(id) {
+            document.getElementById("inputFile").value = ""; //this will clear input type file
+            console.log(id + "is the id received for deletion");
+            //this function removes an attachment from arrays 
+            AllFileNames.splice(id, 1); // at index remove itny element
+            AllFiles.splice(id, 1);
+            console.log(document.getElementById("row" + id));
+            document.getElementById("row" + id).remove(); //removes that attachment from attachment table
+
+
+        }
+        
+        
+
+        function sendMessage(headers_obj, message, callback) {
+            console.log(headers_obj);
+            console.log(message);
+            console.log(AllFiles);
+            console.log(AllFileNames);
+             var myheaders='';
+             var lastval=headers_obj["In-Reply-To"];
+             if(lastval==undefined){
+                 //mltb k reply nhe h 
+                 lastval=headers_obj["Subject"];
+             }
+             console.log(lastval);
+           
+
+            var attach = ''; //This will contain attachment html        
+            //is main messageparts k variable k andar hm 2 files neechy last mai bna rhy
+            var emailBody = message;
+            if (typeof file_ !== "undefined" && file_ != '') {
+                        
+                   
+              for( var header in headers_obj){
+                  if(lastval!=headers_obj[header])
+                        myheaders+=header+": " + headers_obj[header] +"\r\n" ;      //agr to wala tu add kro next line
+                   else
+                         myheaders+=header+": " + headers_obj[header];      //yaani agr reply tu k ba h tu subject s next line khatam kro 
+                }
+                    
+                var messageParts = [
+                    "MIME-Version: 1.0",
+                    myheaders,
+                    "Content-Type: multipart/mixed; boundary=012boundary01",
+                    '',
+                    "--012boundary01",
+                    "Content-Type: multipart/alternative; boundary=012boundary02",
+                    '',
+                    "--012boundary02",
+                    "Content-type: text/html; charset=UTF-8",
+                    "Content-Transfer-Encoding: quoted-printable",
+                    '',
+                    emailBody,
+                    '',
+
+                ]
+                console.log("pehal nessage");
+                console.log(messageParts);
+                for (var i = 0; i < AllFiles.length; i++) {
+                    attach = "--012boundary01\r\n" +
+                        "Content-Type: " + AllFileNames[i].type + "; name=" + AllFileNames[i].name + "\r\n" +
+                        'Content-Disposition: attachment; filename=' + AllFileNames[i].name + '\r\n' +
+                        "Content-Transfer-Encoding: base64\r\n" +
+                        '' +
+                        AllFiles[i] +
+                        "--012boundary02--\r\n" +
+                        "--012boundary01\r\n";
+                    messageParts.push(attach);
+                    //This loop will make that oper wala variable jin s multiple attachment hoti
+                }
+
+                const message = messageParts.join('\r\n');
+                console.log(message);
+
+
+
+                var sendRequest = gapi.client.gmail.users.messages.send({
+                    'userId': 'me',
+                    'resource': {
+                        'raw': window.btoa(unescape(encodeURIComponent(message))).replace(/\+/g, '-').replace(/\//g,
+                            '_')
+                    }
+                });
+                sendRequest.execute(function(response) {
+
+                    alert("Mail Send Successfully");
+                
+                    composeTidy();
+
+                });
+
+            } else {
+                // iska mtlb  h saada message
+                var email = '';
+
+                for (var header in headers_obj)
+                    email += header += ": " + headers_obj[header] + "\r\n";
+
+                email += "\r\n" + message;
+
+                var sendRequest = gapi.client.gmail.users.messages.send({
+                    'userId': 'me',
+                    'resource': {
+                        'raw': window.btoa(email).replace(/\+/g, '-').replace(/\//g, '_')
+                    }
+                });
+                alert('Bhai attachment k beghair b send kr di h ?');
+                return sendRequest.execute(callback);
+
+            }
+        }
+
+        function getHeader(headers, index) {
+            var header = '';
+            $.each(headers, function() {
+                if (this.name.toLowerCase() === index.toLowerCase()) {
+                    header = this.value;
+                }
+            });
+            return header;
+        }
+
+
+        function getBody(message) {
+
+            //get message.payload
+            var encodedBody = '';
+            if (typeof message.parts === 'undefined') {
+                encodedBody = message.body.data; //is k parts nhe h iska data yehine para wa h 
+                //simple case 
+            } else {
+                encodedBody = getHTMLPart(message.parts); //agar isky parts yaani files hn tu message andar parts main hoga
+            }
+            encodedBody = encodedBody.replace(/-/g, '+').replace(/_/g, '/').replace(/\s/g, '');
+
+            return decodeURIComponent(escape(window.atob(encodedBody))); //this decodes the message of the body 
+        }
+
+        function getHTMLPart(arr) {
+            //this function returns text only wheneever it find text in any parts ki array it returns
+            //gets message.payload.parts
+
+            for (var x = 0; x <= arr.length; x++) {
+                if (typeof arr[x].parts === 'undefined') {
+                    //jis ka nhe hota us mai attachment hoti h 
+                    if (arr[x].mimeType === 'text/html') {
+                        return arr[x].body.data; //it gets reply in one data
+                    }
+
+                } else {
+                    return getHTMLPart(arr[x].parts);
+                }
+            }
+            return '';
+        }
+
+
+
+
+        //       function getfile(message,id) {    
+        //           console.log(accesstoken+"is tinmasf");
+
+        //          let result='';
+        //         let encodedBody='';
+
+        //             if(message.mimeType=='multipart/mixed'){
+        //                     let url='https://gmail.googleapis.com/gmail/v1/users/me/messages/'+id+'/attachments/'+message.parts[1].body.attachmentId;
+        //                     console.log(url)
+        //                 $.ajax({
+        //   type: "GET",
+        //   url: url,
+        //   dataType: 'json',
+        //     cache: false,
+        //   success: function(data){
+        //       console.log("ajax");
+        //         console.log(data);
+        //   }
+        // });
+        //           result= getFileContent('kharoos');
+        //             console.log('pehly');
+        //         return getFileContent(result);
+        //         request.execute(function(response) {
+
+        //                       var result= getFileContent(response);
+        //                         console.log('pehly');
+        //           console.log(result);
+        //           return result;
+
+        //         });
+
+        //             }else{
+        //                  return "No Attachment"
+        //             }
+
+
+        //       }
+
+        function getFileContent(response, file_name, file_type) {
+            
+            //This function store the the decoded data to its filetype
+            
+            //it needs 3 things filename, mimetype, and data
+
+            let name = file_name;
+            name = name.split(".");
+            var base64 = (response.data).replace(/_/g, '/'); //Replace this characters 
+            base64 = base64.replace(/-/g, '+');
+            var base64Fixed = fixBase64(base64);
+            //  let str = ;
+            // const myArr = str.split("/");
+
+            var blob = new Blob([base64Fixed], {
+                type: file_type
+            }); //set your file type!
+            saveAs(blob, name[0]); //Using FileSaver library
+
+
+
+        }
+
+
+
+        function fixBase64(binaryData) {
+            var base64str = binaryData // base64 string from  thr response of server
+            var binary = atob(base64str.replace(/\s/g, '')); // decode base64 string, remove space for IE compatibility
+            var len = binary.length; // get binary length
+            var buffer = new ArrayBuffer(len); // create ArrayBuffer with binary length
+            var view = new Uint8Array(buffer); // create 8-bit Array
+
+            // save unicode of binary data into 8-bit Array
+            for (var i = 0; i < len; i++)
+                view[i] = binary.charCodeAt(i);
+
+            return view;
+        }
+
+
+        //           function getFileContent(response,ifrm) {
+        //                  console.log('dosry');
+        //           //get File Content
+        //     var encodedBody = '';
+        //       encodedBody = response.data;  //agar isky parts yaani 
+        //     encodedBody = encodedBody.replace(/-/g, '+').replace(/_/g, '/').replace(/\s/g, '');
+        //     console.log(encodedBody);
+        //     console.log(decodeURIComponent(escape(window.atob(encodedBody))));
+        //     var data=decodeURIComponent(escape(window.atob(encodedBody))); 
+        //       $('body', ifrm).append(data); 
+        //     // return decodeURIComponent(escape(window.atob(encodedBody)));    //this decodes the response.data
+
+        //   }
+
+        function getFileName(message,id,block) {
+            console.log(message);
+            var obj1=message;
+
+            var obj2=block;
+            var filenames='';
+            var quote="'";
+            //  console.log('2sra');
+            if (message.mimeType != 'text/plain') {
+                 for (var i in message.parts) {
+                    if(i==0){
+                         continue;
+                    }else{
+                        if(i==1 && message.parts[1].mimeType!='text/html' && message.parts[1].mimeType!='message/delivery-status'){
+                                filenames+=' <table class="table table-bordered">'+
+                                '<thead>'+
+                                    '<tr>'+
+                                        '<th scope="col" style="width:80%">Attachment</th>'+
+                                        '<th scope="col">Download</th>'+
+                                    '</tr>'+
+                                '</thead>'+
+                                '<tbody>';
+                                    
+
+                            
+                            //yhan par table bna lien aur neechy files append ho jaien gi 
+                        }
+                         if(message.parts[1].mimeType!='text/html' && message.parts[1].mimeType!='message/delivery-status'){
+                        filenames+='<tr>'+
+                                '<td>'+
+                        message.parts[i].filename+'</td>'+
+                        '<td>'+
+                        '<button type="button" onclick="getfile('+quote+message.parts[i].body.attachmentId+quote+','+quote+id+quote+','+quote+message.parts[i].filename+quote+','+quote+message.parts[i].mimeType+quote+');" class="btn btn-danger"><i class="far fa-eye"></i></button>'+
+                        '</td>'+
+                        '</tr>';
+                        }
+                    }
+                }
+                    filenames+='</tbody>'
+                            '</table>';
+                            console.log(filenames);
+                return filenames;
+            }
+        }
+        
+        
+        function getfile(attachment_id, message_id, file_name,file_type) { //is main .execute error deta
+            console.log("in g4tting file");
+            let result = '';
+            let encodedBody = '';
+
+                        // console.log(message.parts[1].body.attachmentId);
+                        var request = gapi.client.gmail.users.messages.attachments.get({
+                            'userId': 'me',
+                            'messageId': message_id,
+                            'id': attachment_id,       //id of the message attachment
+                        });
+                        request.execute(function(response) {
+
+                            getFileContent(response, file_name, file_type);
+
+
+                        });
+          
+
+
+        }
+    </script>
+    <script src="https://apis.google.com/js/client.js?onload=handleClientLoad"></script>
+    <script src="FileSaver.js"></script>
+</body>
+
+</html>
